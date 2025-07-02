@@ -1,0 +1,5 @@
+dataset/
+__pycache__/
+*.txt
+*.gz
+*.bat
