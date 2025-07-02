@@ -11,7 +11,7 @@ This project explores the generalization capabilities of Vision-Language Models 
 - **`sd_gen.py`**: Generate images through Stable Diffusion's `text2image` block 🖼️
 - **`gen_feat.py`**: Get visual features of generated images via VFE(·) 🧠
 - **`multi_scale_gen_feat.py`**: Get multi-scale features of generated images 🧳
-- **`mega.py`**: Construct real features and generated features, and predict prototypes of real images 🔮
+- **`mega.py`**: Contrast real features and generated features, and predict prototypes of real images 🔮
 
 ## Dataset 📦
 
