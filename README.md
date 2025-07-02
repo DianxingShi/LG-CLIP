@@ -1,24 +1,33 @@
-# MsLLMG
-Exploring Vision-Language Model Generalization with Image Generation
+# MsLLMG 📚
+**Exploring Vision-Language Model Generalization with Image Generation** 🎨🤖
 
-vanilla_clip.py: get visual features of real images via VFE(·)
-vanilla_clip_ms.py: get multi-scale visual features of real images
-prompts_gen.py: generate prompts used to generate images via LLM
-sd_gen.py: generate images through Stable Diffusion's text2image block
-gen_feat.py: get visual features of genarated images via VFE(·)
-multi_scale_gen_feat.py: get multi-scale features of genetated images
-mega.py: construct real_features and generated_features and predict prototypes of real images
+## Overview 🔍
+This project explores the generalization capabilities of Vision-Language Models (VLMs) through the lens of image generation. Below are the key scripts and their functionalities:
 
-dataset:|-CUB
-        |-EUROSAT
-        |-FLO
-        |-FOOD
-        |-ImageNet
-        |-PET
-        |-SD_gen/
-        |-LLM_SD_gen/
-        |-prompts    
-                      
-                     
-                     
-                     
+### Scripts 💻
+- **`vanilla_clip.py`**: Get visual features of real images via VFE(·) 🔑
+- **`vanilla_clip_ms.py`**: Get multi-scale visual features of real images 🌍
+- **`prompts_gen.py`**: Generate prompts used to generate images via LLM 📝
+- **`sd_gen.py`**: Generate images through Stable Diffusion's `text2image` block 🖼️
+- **`gen_feat.py`**: Get visual features of generated images via VFE(·) 🧠
+- **`multi_scale_gen_feat.py`**: Get multi-scale features of generated images 🧳
+- **`mega.py`**: Construct real features and generated features, and predict prototypes of real images 🔮
+
+## Dataset 📦
+
+The project works with the following datasets:
+
+- **CUB** 🦅
+- **EUROSAT** 🌍
+- **FLO** 🌾
+- **FOOD** 🍔
+- **ImageNet** 🖼️
+- **PET** 🐶
+- **SD_gen** 🏞️
+- **LLM_SD_gen** 🖥️
+- **prompts** ✍️
+
+## Directory Tree 🌳
+
+Here's an overview of the project structure:
+
