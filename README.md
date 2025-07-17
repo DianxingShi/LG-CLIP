@@ -1,4 +1,4 @@
-# MsLLMG 📚
+# LG-CLIP 📚
 **Exploring Vision-Language Model Generalization with Image Generation** 🎨🤖
 
 ## Overview 🔍
