@@ -32,7 +32,7 @@ The project works with the following datasets:
 Here's an overview of the project structure:
 
 ```plaintext
-MsLLMG/
+LG_CLIP/
 │
 ├── vanilla_clip.py               # Get visual features of real images via VFE(·)
 ├── vanilla_clip_ms.py            # Get multi-scale visual features of real images
