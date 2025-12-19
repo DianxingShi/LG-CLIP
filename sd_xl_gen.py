@@ -77,7 +77,7 @@ elif args.sd_2_1:
 else:
     pretrained_model_name_or_path = "CompVis/stable-diffusion-v1-4"
 
-accelerator = Accelerator()  # 支持 FP16
+accelerator = Accelerator()  
 # mixed_precision="fp16"
 device = accelerator.device
 pipeline = AutoPipelineForText2Image.from_pretrained(pretrained_model_name_or_path,safety_checker=None).to(device)
@@ -137,7 +137,7 @@ for class_label, class_name in enumerate(all_names):
             seed=7
         img_path = f"{img_dir_path}/{seed}_{class_name}.jpg"
         to_pil = T.ToPILImage()
-        pil_image = to_pil(image_out.cpu())  # 直接将 [C, H, W] 张量转换为 PIL 图像
+        pil_image = to_pil(image_out.cpu()) 
 
-# 保存为 JPEG 文件
+
         pil_image.save(img_path, "JPEG") 
