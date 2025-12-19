@@ -11,16 +11,16 @@ from diffusers import AutoPipelineForText2Image
 import torchvision.transforms as T
 from utils.helper_func import *
 from accelerate import Accelerator
-from PIL import Image  # 这里是导入 PIL 的 Image 模块
+from PIL import Image  
 import json
 
-# 加载 JSON 文件
+
 def load_class_prompts(json_file_path):
     with open(json_file_path, 'r') as file:
         class_prompts = json.load(file)
     return class_prompts
 
-# 设置参数
+
 projectPath = os.path.dirname(os.path.abspath(__file__))
 parser = argparse.ArgumentParser(description="Image Generation with Stable Diffusion")
 # -------------------- Path config --------------------#
@@ -44,10 +44,10 @@ torch.cuda.manual_seed_all(args.seed)
 # ======================================== Dataset ======================================== #
 # Only load PET dataset and ignore othersyv
 # if args.dataset == "PET":
-#     # 加载从JSON文件生成的提示词数据
+
 class_prompts = load_class_prompts(args.json_file)
 # elif args.dataset == "FLO":   
-#     # 加载从JSON文件生成的提示词数据
+
 #     class_prompts = load_class_prompts(args.json_file)
 # else:
 #     print(f"Dataset {args.dataset} is not supported. Only 'PET' dataset will be used.")
@@ -71,29 +71,29 @@ for eachArg, value in argsDict.items():
     logger.info(eachArg + ':' + str(value))
 logger.info("="*50)
 
-# 生成图像
+
 for class_name, prompts in class_prompts.items():
-    # 每个类使用第一个提示词生成图像
+  
     prompt = prompts[0]
     print(f"====> Start generating images for '{class_name}' with prompt: '{prompt}'")
     logger.info(f"====> Start generating images for '{class_name}' with prompt: '{prompt}'")
 
-    # 创建保存图像的目录
+   
     img_dir_path = f"{args.gen_root_path}/{exp_identifier}/{class_name}"
     Path(img_dir_path).mkdir(parents=True, exist_ok=True)
 
     existing_images = [f for f in os.listdir(img_dir_path) if f.endswith('.jpg') or f.endswith('.png')]
     existing_count = len(existing_images)
-# 确定起始序号：找到当前目录下的最大序号
-    if existing_count >= args.Ngen:  # 文件夹已满，跳过生成
+
+    if existing_count >= args.Ngen: 
         continue
     max_index = 0
     if existing_images:
-    # 提取已有图片中的序号部分
+ 
         indices = [int(re.search(r'^(\d+)_', img).group(1)) for img in existing_images if re.search(r'^(\d+)_', img)]
-        max_index = max(indices) + 1  # 序号从最大值+1开始
+        max_index = max(indices) + 1  
     else:
-        max_index = 0  # 如果没有图片，序号从0开始
+        max_index = 0  
 
     # -------------------- Pipeline -------------------- #
     if args.sd_xl:
@@ -103,18 +103,18 @@ for class_name, prompts in class_prompts.items():
     else:
         pretrained_model_name_or_path = "CompVis/stable-diffusion-v1-4"
     
-    # 加载Stable Diffusion模型
-    accelerator = Accelerator()  # 支持 FP16
+
+    accelerator = Accelerator()
 # mixed_precision="fp16"
     device = accelerator.device
     pipeline = AutoPipelineForText2Image.from_pretrained(pretrained_model_name_or_path).to(device)
     pipeline = accelerator.prepare(pipeline)
 
-    for seed in range(existing_count, args.Ngen):  # 从现有数量继续生成
+    for seed in range(existing_count, args.Ngen): 
         generator = torch.Generator(device=device)
-        generator.manual_seed(seed)  # 使用当前种子生成器
+        generator.manual_seed(seed)  
 
-    # 使用序号生成唯一文件名
+    
         img_name = f"{max_index + (seed - existing_count)}_{class_name}.jpg"
         img_path = os.path.join(img_dir_path, img_name)
 
@@ -133,12 +133,12 @@ for class_name, prompts in class_prompts.items():
         else:
             image_out = pipeline(prompt, output_type="pt", generator=generator).images[0]
 
-    # 将生成的图像保存为 JPEG
+   
         to_pil = T.ToPILImage()
         pil_image = to_pil(image_out.cpu())
         pil_image.save(img_path, "JPEG")
 
-    # 打印日志
+
         print(f"Generated image: {img_path}")
         logger.info(f"Generated image: {img_path}")
 
