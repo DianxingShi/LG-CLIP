@@ -64,7 +64,7 @@ all_names = mydataset.all_names
 # ======================================== CLIP features ======================================== #
 model_name = args.backbone.replace("-", "").replace("/", "")
 CLIP_feature_path = args.image_root + f"/{args.dataset}/CLIP_{model_name}_feature{args.ms1}.hdf5"
-CLIP_feature_gen_path = args.image_root + f"/{args.dataset}/{args.LLM}CLIP_{model_name}_feature_gen{args.Ngen}{args.ms2}.hdf5"                        #☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#####################################################################
+CLIP_feature_gen_path = args.image_root + f"/{args.dataset}/{args.LLM}CLIP_{model_name}_feature_gen{args.Ngen}{args.ms2}.hdf5"                     
 
 if os.path.exists(CLIP_feature_path) and os.path.exists(CLIP_feature_gen_path):
     print(" ==> Load existing feature (Real).")
@@ -113,7 +113,7 @@ prototypes = gen_prototypes
 # prototypes = (real_prototypes + gen_prototypes) / 2
 # prototypes = real_prototypes *31/40 + gen_prototypes *9/40
 
-#####################################################################加权/屏蔽
+
 # mask = torch.ones_like(gen_prototypes)
 # mask[24] = 0  # Set the 24th class (peisian) to 0
 # masked_gen_prototypes = gen_prototypes * mask
@@ -123,7 +123,7 @@ prototypes = gen_prototypes
 # Acc = correct.item() / len(test_l)
 # print("[{}]: Acc = {:.2f}%".format(args.backbone, Acc * 100))
 
-####################################################################
+
 simi_scores = torch.matmul(test_f, prototypes.T)
 predicted_classes = torch.argmax(simi_scores, dim=1)
 correct = torch.sum(predicted_classes == test_l)
