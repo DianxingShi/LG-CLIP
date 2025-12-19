@@ -53,8 +53,8 @@ def load_feature_and_label(feature_dir, scale_idx,bc):
     """
     Load features and labels from the HDF5 file for a specific scale index.
     """
-    file_path = os.path.join(feature_dir, f"{args.LLM}CLIP_{bc}_feature_gen{args.Ngen}_scale{scale_idx}.hdf5")   ##生成集多尺度目录#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#####################################################################
-    # file_path = os.path.join(feature_dir, f"CLIP_{bc}_scale{scale_idx}.hdf5")      ##测试集多尺度目录
+    file_path = os.path.join(feature_dir, f"{args.LLM}CLIP_{bc}_feature_gen{args.Ngen}_scale{scale_idx}.hdf5") 
+    # file_path = os.path.join(feature_dir, f"CLIP_{bc}_scale{scale_idx}.hdf5")     
     with h5py.File(file_path, 'r') as f:
         features = torch.from_numpy(np.array(f['gen_f'])).float()
         labels = torch.from_numpy(np.array(f['gen_l'])).float()
@@ -103,7 +103,7 @@ parser = argparse.ArgumentParser(description="Extract CLIP features with multi-s
 # -------------------- Path config --------------------#
 parser.add_argument('--dataset', default='PET', help='Dataset: CUB, FLO, etc.')
 parser.add_argument('--image_root', default=projectPath + '/dataset', help='Path to dataset root')
-parser.add_argument('--gen_root_path', default=projectPath + '/dataset/LLM_SD_gen')                        #☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#####################################################################
+parser.add_argument('--gen_root_path', default=projectPath + '/dataset/LLM_SD_gen')                       
 # -------------------- Other config --------------------#
 parser.add_argument('--sd_2_1', default=True, action="store_true", help='SD version')
 parser.add_argument('--sd_xl', default=False, action="store_true", help='Use SD XL model')
@@ -144,17 +144,17 @@ all_names = mydataset.all_names
 model_version = "XL" if args.sd_xl else "2.1" if args.sd_2_1 else "1.4"
 model_name = args.backbone.replace("-", "").replace("/", "")
 gen5t_model_name = re.sub(r"[A-Za-z]", "", args.backbone.replace("-", "").replace("/", ""))
-exp_identifier = f"{args.LLM}SD_{model_version}_{args.dataset}_10"  ##_SD_gen默认目录                        #☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#####################################################################
+exp_identifier = f"{args.LLM}SD_{model_version}_{args.dataset}_10"                        
 multi_scale_dir = os.path.join(args.image_root, args.dataset, "muti_scale")
-# gen5t_exp_identifier = f"SD_{model_version}_{args.dataset}_5_{gen5t_model_name}_top5"  ##10_gen5t目录
+# gen5t_exp_identifier = f"SD_{model_version}_{args.dataset}_5_{gen5t_model_name}_top5"  
 os.makedirs(multi_scale_dir, exist_ok=True)
 
-for scale in range(1, 11):  # 假设跑10轮
+for scale in range(1, 11):  
     scale_factor = scale / 10
     print(f"Processing scale factor: {scale_factor}")
 
-    # 动态调整 CLIP 特征保存路径 #
-    CLIP_feature_gen_path = os.path.join(multi_scale_dir, f"{args.LLM}CLIP_{model_name}_feature_gen{args.Ngen}_scale{scale}.hdf5")                        #☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#####################################################################
+  
+    CLIP_feature_gen_path = os.path.join(multi_scale_dir, f"{args.LLM}CLIP_{model_name}_feature_gen{args.Ngen}_scale{scale}.hdf5")                       
 
     if os.path.exists(CLIP_feature_gen_path):
         print(f" ==> Load existing feature for scale {scale}.")
@@ -170,14 +170,14 @@ for scale in range(1, 11):  # 假设跑10轮
         print("Text embeddings shape: ", all_embeddings.shape)
 
         # -------------------- Visual features --------------------#
-        # Ngen=10时候
+     
         if args.LLM=="LLM_":
             grp=args.gen_root_path
         else:
             grp=projectPath + '/dataset/SD_gen'
         gen_files, gen_labels = [], []
         if args.Ngen == 10:
-        # 原始读取方式
+        
             for idx, name in enumerate(all_names):
                 imgDir = f"{grp}/{exp_identifier}/{name}"
                 for this_img in os.listdir(imgDir):
@@ -185,10 +185,10 @@ for scale in range(1, 11):  # 假设跑10轮
                     gen_files.append(filePath)
                 gen_labels += [idx] * args.Ngen
         else:
-        # 从JSON文件读取
+       
             json_path = os.path.join(
                 args.image_root,
-                f"{args.dataset}/json/{args.LLM}SD_{model_version}_{args.dataset}_{model_name}_{args.Ngen}.json"                        #☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#####################################################################
+                f"{args.dataset}/json/{args.LLM}SD_{model_version}_{args.dataset}_{model_name}_{args.Ngen}.json"                       
             )
             if not os.path.exists(json_path):
                 raise FileNotFoundError(f"JSON file {json_path} not found!")
@@ -205,19 +205,19 @@ for scale in range(1, 11):  # 假设跑10轮
     # -------------------- Visual features --------------------#
         # gen_files, gen_labels = [], []
         # for idx, name in enumerate(all_names):
-        #     imgDir = f"{args.gen_root_path}/{exp_identifier}/{name}"  ##          导入的图像路径
-        #     all_images = sorted(os.listdir(imgDir))  # 确保文件名排序一致
-        #     selected_images = all_images[:args.Ngen]  # 提取前 args.Ngen 张图像
+        #     imgDir = f"{args.gen_root_path}/{exp_identifier}/{name}" 
+        #     all_images = sorted(os.listdir(imgDir))  
+        #     selected_images = all_images[:args.Ngen]  
         #     for this_img in selected_images:
         #         filePath = os.path.join(imgDir, this_img)
         #         gen_files.append(filePath)
-        #     assert len(gen_files) == (idx + 1) * args.Ngen  # 确保提取的图像数量正确
+        #     assert len(gen_files) == (idx + 1) * args.Ngen 
         #     gen_labels += [idx] * args.Ngen
-        # assert len(gen_files) == len(all_names) * args.Ngen  # 最终的断言检查
+        # assert len(gen_files) == len(all_names) * args.Ngen  
         # gen_labels = np.array(gen_labels)
         # gendf = list(zip(gen_files, gen_labels))
 
-        # 动态调整图像预处理的缩放参数
+      
         multi_scale_transform = transforms.Compose([
             transforms.RandomResizedCrop(size=224, scale=(scale_factor, scale_factor), interpolation=transforms.InterpolationMode.BICUBIC),
             transforms.ToTensor(),
@@ -230,7 +230,7 @@ for scale in range(1, 11):  # 假设跑10轮
         gen_l = gen_l.reshape(len(all_names), args.Ngen, 1)
         print(f"Gen embeddings shape for scale {scale}: ", gen_f.shape)
 
-        # 保存特征
+       
         with h5py.File(CLIP_feature_gen_path, "w") as f:
             f.create_dataset('gen_f', data=gen_f, compression="gzip")
             f.create_dataset('gen_l', data=gen_l, compression="gzip")
@@ -252,9 +252,9 @@ for scale in range(1, 11):  # 假设跑10轮
 
 dataset_name = args.dataset  # Change this to match the actual dataset
 backbone = args.backbone  # Change this to match the actual backbone
-base_feature_dir = f"D:\\PYproject\\clipI\\dataset\\{dataset_name}\\muti_scale"   ##生成集特征目录
-# save_real_feature_path = f"D:\\PYproject\\clipI\\dataset\\{dataset_name}\\CLIP_{model_name}_feature_multi_scale.hdf5"   ##测试集最终特征保存路径
-save_feature_path = f"D:\\PYproject\\clipI\\dataset\\{dataset_name}\\{args.LLM}CLIP_{model_name}_feature_gen{args.Ngen}_ms.hdf5"   ##生成集最终特征保存路径      #☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#####################################################################
+base_feature_dir = f"D:\\PYproject\\clipI\\dataset\\{dataset_name}\\muti_scale"  
+# save_real_feature_path = f"D:\\PYproject\\clipI\\dataset\\{dataset_name}\\CLIP_{model_name}_feature_multi_scale.hdf5"  
+save_feature_path = f"D:\\PYproject\\clipI\\dataset\\{dataset_name}\\{args.LLM}CLIP_{model_name}_feature_gen{args.Ngen}_ms.hdf5"  
 # Combine features
 combine_multi_scale_features(base_feature_dir, save_feature_path)
 print("Combined multi-scale features and labels saved successfully!")
