@@ -1,15 +1,4 @@
-"""
-- Classification with vanilla CLIP (contrastive learning)
-[A photo of a {name}.]
-==> RN50
-[CUB]  --> 46.08% || [FLO]  --> 61.71% || [PET]  --> 83.65% || [FOOD]  --> 73.95%
-==> ViT-B/32
-[CUB]  --> 51.57% || [FLO]  --> 64.03% || [PET]  --> 85.09%
-==> ViT-B/16
-[CUB]  --> 55.07% || [FLO]  --> 67.48% || [PET]  --> 88.25% || [FOOD]  --> 83.65%
-==> ViT-L/14
-[CUB]  --> 62.19% || [FLO]  --> 76.17% || [PET]  --> 93.08%
-"""
+
 
 import os
 import re
@@ -152,10 +141,10 @@ Acc = correct.item() / len(test_l)
 print("[{}]: Acc = {:.2f}%".format(args.backbone, Acc * 100))
 # mapped_results = []
 # for image_file, label in zip(mydataset.image_files, mydataset.labels.numpy()):
-#     class_name = mydataset.all_names[label - 1]  # 注意：标签是否从1开始需调整
+#     class_name = mydataset.all_names[label - 1] 
 #     mapped_results.append(f" {class_name}")
 
-#     # 保存到 txt 文件
+
 # output_file = "imagenet_mapped_results.txt"
 # with open(output_file, "w") as f:
 #     for result in mapped_results:
