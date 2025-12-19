@@ -55,7 +55,7 @@ projectPath = os.path.dirname(os.path.abspath(__file__))
 parser = argparse.ArgumentParser(description="Dynamic Filtering and JSON Generation")
 parser.add_argument('--dataset', default='ImageNet', help='Dataset name: CUB')
 parser.add_argument('--image_root', default=projectPath + '/dataset', help='Path to image root')
-parser.add_argument('--gen_root_path', default=projectPath + '/dataset/SD_gen', help='Generated images path')                        #☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#####################################################################
+parser.add_argument('--gen_root_path', default=projectPath + '/dataset/SD_gen', help='Generated images path')                      
 parser.add_argument('--sd_2_1', default=True, action="store_true", help='Use SD 2.1 model')
 parser.add_argument('--Ngen', default=10, type=int, help='Number of images to select')
 parser.add_argument('--backbone', default='ViT-B/32', help='CLIP backbone')
@@ -100,7 +100,7 @@ if args.LLM=="LLM_":
     grp=args.gen_root_path
 else:
     grp=projectPath + '/dataset/SD_gen'
-gen_root_dir = os.path.join(grp, f"{args.LLM}SD_{model_version}_{args.dataset}_10")                        #☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#####################################################################
+gen_root_dir = os.path.join(grp, f"{args.LLM}SD_{model_version}_{args.dataset}_10")                       
 if not os.path.exists(gen_root_dir):
     raise FileNotFoundError(f"Default folder {gen_root_dir} does not exist!")
 
@@ -136,26 +136,26 @@ for idx, (gen_file, gen_label) in enumerate(zip(gen_files, gen_l)):
 filtered_result_dict = {}
 
 for label in result_dict:
-    # 获取该类别的所有图片
+    
     images = result_dict[label]
 
-    # 分类正确和错误的图片分别存储
+   
     correct_images = [img for img in images if predicted_classes[gen_files.index(img["image"])] == label]
     incorrect_images = [img for img in images if img not in correct_images]
 
-    # 按概率降序排序
+    
     correct_images = sorted(correct_images, key=lambda x: x["probability"], reverse=True)
     incorrect_images = sorted(incorrect_images, key=lambda x: x["probability"], reverse=True)
 
-    # 优先从正确分类中选取
+    
     selected_images = correct_images[:args.Ngen]
 
-    # 如果正确分类的数量不足 Ngen，从错误分类中补齐
+   
     if len(selected_images) < args.Ngen:
         needed = args.Ngen - len(selected_images)
         selected_images += incorrect_images[:needed]
 
-    # 将最终筛选的图片加入结果字典
+    
     filtered_result_dict[label] = selected_images
 
 # Save to JSON
@@ -164,10 +164,10 @@ os.makedirs(json_output_dir, exist_ok=True)
 backbone_name = args.backbone.replace("/", "").replace("-", "")
 json_output_path = os.path.join(
     json_output_dir,
-    f"{args.LLM}SD_{model_version}_{args.dataset}_{backbone_name}_{args.Ngen}.json"                        #☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#####################################################################
+    f"{args.LLM}SD_{model_version}_{args.dataset}_{backbone_name}_{args.Ngen}.json"                       
 )
 json_result = {all_names[label]: filtered_result_dict[label] for label in filtered_result_dict}
 with open(json_output_path, 'w', encoding='utf-8') as json_file:
     json.dump(json_result, json_file, indent=4, ensure_ascii=False)
 
-print(f"筛选结果已保存到 {json_output_path}")
+
