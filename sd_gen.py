@@ -80,7 +80,7 @@ for class_label, class_name in enumerate(all_names):
     img_dir_path = f"{args.gen_root_path}/{exp_identifier}/{class_name}"
     Path(img_dir_path).mkdir(parents=True, exist_ok=True)
 
-    # 检查文件夹中已有的图像数量
+   
     existing_images = [f for f in os.listdir(img_dir_path) if f.endswith('.jpg')]
     num_existing = len(existing_images)
 
@@ -104,7 +104,7 @@ for class_label, class_name in enumerate(all_names):
     print(f"Generation of the prompt: '{prompt}'")
     logger.info(f"Generation of the prompt: '{prompt}'")
 
-    # 确定起始序号，继续生成图像
+    
     existing_indices = [int(re.search(r'^(\d+)_', img).group(1)) for img in existing_images if re.match(r'^\d+_', img)]
     start_index = max(existing_indices) + 1 if existing_indices else 0
 
