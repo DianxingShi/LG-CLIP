@@ -7,8 +7,8 @@ def load_feature_and_label(feature_dir, scale_idx,bc):
     """
     Load features and labels from the HDF5 file for a specific scale index.
     """
-    file_path = os.path.join(feature_dir, f"CLIP_{bc}_feature_gen5_scale{scale_idx}.hdf5")   ##生成集多尺度目录
-    # file_path = os.path.join(feature_dir, f"CLIP_{bc}_scale{scale_idx}.hdf5")      ##测试集多尺度目录
+    file_path = os.path.join(feature_dir, f"CLIP_{bc}_feature_gen5_scale{scale_idx}.hdf5")  
+    # file_path = os.path.join(feature_dir, f"CLIP_{bc}_scale{scale_idx}.hdf5")      
     with h5py.File(file_path, 'r') as f:
         features = torch.from_numpy(np.array(f['gen_f'])).float()
         labels = torch.from_numpy(np.array(f['gen_l'])).float()
@@ -57,10 +57,10 @@ dataset_name = "CUB"  # Change this to match the actual dataset
 backbone = "RN50"  # Change this to match the actual backbone
 model_name = backbone.replace("-", "").replace("/", "")
 gen5t_model_name = re.sub(r"[A-Za-z]", "", backbone.replace("-", "").replace("/", ""))
-# base_real_feature_dir = f"D:\\PYproject\\clipI\\dataset\\{dataset_name}\\multi_scale"  ##测试集特征目录
-base_feature_dir = f"D:\\PYproject\\clipI\\dataset\\{dataset_name}\\muti_scale"   ##生成集特征目录
-# save_real_feature_path = f"D:\\PYproject\\clipI\\dataset\\{dataset_name}\\CLIP_{model_name}_feature_multi_scale.hdf5"   ##测试集最终特征保存路径
-save_feature_path = f"D:\\PYproject\\clipI\\dataset\\{dataset_name}\\CLIP_{model_name}_feature_gen5_multi_scale.hdf5"   ##生成集最终特征保存路径
+# base_real_feature_dir = f"D:\\PYproject\\clipI\\dataset\\{dataset_name}\\multi_scale" 
+base_feature_dir = f"D:\\PYproject\\clipI\\dataset\\{dataset_name}\\muti_scale"   
+# save_real_feature_path = f"D:\\PYproject\\clipI\\dataset\\{dataset_name}\\CLIP_{model_name}_feature_multi_scale.hdf5"  
+save_feature_path = f"D:\\PYproject\\clipI\\dataset\\{dataset_name}\\CLIP_{model_name}_feature_gen5_multi_scale.hdf5"   
 # Combine features
 combine_multi_scale_features(base_feature_dir, save_feature_path)
 print("Combined multi-scale features and labels saved successfully!")
