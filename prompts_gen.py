@@ -4,9 +4,9 @@ import os
 import requests
 from pathlib import Path
 import torch
-from utils.myDataset import *  # 假设你已经导入了数据集相关的类
+from utils.myDataset import * 
 
-# 调用 API 生成提示词
+
 def generate_prompts(class_name, num_prompts, api_key):
     url = "https://api.x.ai/v1/chat/completions"
     headers = {
@@ -37,18 +37,18 @@ def generate_prompts(class_name, num_prompts, api_key):
         print(f"API error for class '{class_name}': {response.status_code} - {response.text}")
         return [f"Error generating prompt for {class_name}"]
 
-# 主函数
+
 def main():
-    # 设置解析器
+    
     parser = argparse.ArgumentParser(description="Generate prompts for a dataset using XAI API.")
     parser.add_argument('--dataset', default='ImageNet', help='数据集：CUB/FLO/PET/FOOD/ImageNet')
-    parser.add_argument('--image_root', default='D:\\PYproject\\clipI\\dataset', help='数据集根目录路径')
-    parser.add_argument('--output_dir', default='D:\\PYproject\\clipI\\dataset\\prompts', help='保存生成提示词的目录')
-    parser.add_argument('--api_key', default='xai-dyz0BBSyZyAyalw8tRVYBh0kGUGo2DW9P3enDGd9Y9jSdO2aiQnhiHSDfXgO0fS3WVLJ5a9uDNX7MCGa', help='XAI API 密钥')
-    parser.add_argument('--num_prompts', type=int, default=10, help='每个类生成的提示词数量')
+    parser.add_argument('--image_root', default='D:\\PYproject\\clipI\\dataset', help='')
+    parser.add_argument('--output_dir', default='D:\\PYproject\\clipI\\dataset\\prompts', help='')
+    parser.add_argument('--api_key', default='', help='')
+    parser.add_argument('--num_prompts', type=int, default=10, help='')
     args = parser.parse_args()
 
-    # 根据选择的数据集加载
+    
     if args.dataset == "CUB":
         mydataset = CUBDataset(args)
     elif args.dataset == "FLO":
@@ -60,45 +60,45 @@ def main():
     elif args.dataset == "ImageNet":
         mydataset = ImageNetDataset(args)
     else:
-        raise ValueError(f"未知数据集: {args.dataset}")
+        raise ValueError(f"unknown: {args.dataset}")
 
-    # 提取类名
+  
     all_names = mydataset.all_names
-    print(f"从 {args.dataset} 数据集中加载了 {len(all_names)} 个类。")
+  
 
-    # 输出文件路径
+  
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     output_file = output_dir / f"prompts_for_{args.dataset}.json"
 
-    # 读取已有的提示词文件
+   
     if output_file.exists():
         with open(output_file, 'r', encoding='utf-8') as f:
             prompts_dict = json.load(f)
     else:
         prompts_dict = {}
 
-    # 检查缺失类
+ 
     missing_classes = [name for name in all_names if name not in prompts_dict]
-    print(f"需要补充提示词的类：{len(missing_classes)} 个")
 
-    # 补充缺失的提示词
+
+   
     for class_name in missing_classes:
         prompts = generate_prompts(class_name, args.num_prompts, args.api_key)
         prompts_dict[class_name] = prompts
-        print(f"为类 '{class_name}' 补充了提示词")
+      
 
-        # 立刻写入文件
+       
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(prompts_dict, f, ensure_ascii=False, indent=4)
     
     sorted_prompts_dict = {name: prompts_dict.get(name, []) for name in all_names}
 
-    # 保存排序后的 JSON 文件
+    
     with open(output_file, 'w', encoding='utf-8') as f:
         json.dump(sorted_prompts_dict, f, ensure_ascii=False, indent=4)
 
-    print(f"提示词已保存到 {output_file}，并按类名排序完成。")
+    
 
 if __name__ == "__main__":
     main()
