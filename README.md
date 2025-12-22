@@ -1,6 +1,7 @@
 # LG-CLIP 📚
 **Can Synthetic Images Serve as Effective and Efficient Class Prototypes?** 🎨🤖
 
+Our preprint paper:  https://arxiv.org/abs/2512.17160
 ## Overview 🔍
 This project explores the generalization capabilities of Vision-Language Models (VLMs) through the lens of image generation. Below are the key scripts and their functionalities:
 
