@@ -1,10 +1,12 @@
 # LG-CLIP 📚
 **Can Synthetic Images Serve as Effective and Efficient Class Prototypes?** 🎨🤖
 
+**🎉 Our paper just accepted by IEEE ICASSP 2026 🎉**
+
 Our preprint paper:  https://arxiv.org/abs/2512.17160
 ## Overview 🔍
 This project explores the generalization capabilities of Vision-Language Models (VLMs) through the lens of image generation. Below are the key scripts and their functionalities:
-
+``
 ### Scripts 💻
 - **`vanilla_clip.py`**: Get visual features of real images via VFE(·) 🔑
 - **`vanilla_clip_ms.py`**: Get multi-scale visual features of real images 🌍
