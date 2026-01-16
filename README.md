@@ -1,7 +1,7 @@
 # LG-CLIP 📚
 **Can Synthetic Images Serve as Effective and Efficient Class Prototypes?** 🎨🤖
 
-**🎉 Our paper just accepted by IEEE ICASSP 2026 🎉**
+**🎉 Our paper is accepted by IEEE ICASSP 2026 🎉**
 
 Our preprint paper:  https://arxiv.org/abs/2512.17160
 ## Overview 🔍
