@@ -63,7 +63,7 @@ parser = argparse.ArgumentParser(description="")
 # -------------------- Path config --------------------#
 parser.add_argument('--dataset', default='ImageNet', help='dataset: CUB')
 parser.add_argument('--image_root', default=projectPath + '/dataset', help='Path to image root')
-parser.add_argument('--gen_root_path', default=projectPath + '/dataset/LLM_SD_gen')                        #☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#####################################################################
+parser.add_argument('--gen_root_path', default=projectPath + '/dataset/LLM_SD_gen')                        
 # -------------------- other config --------------------#
 parser.add_argument('--sd_2_1', default=True, action="store_true", help='SD version')
 parser.add_argument('--sd_xl', default=False, action="store_true", help='Use SD XL model')
@@ -102,9 +102,9 @@ else:
 all_names = mydataset.all_names
 # ======================================== CLIP features ======================================== #
 model_version = "XL" if args.sd_xl else "2.1" if args.sd_2_1 else "1.4"
-exp_identifier = f"{args.LLM}SD_{model_version}_{args.dataset}_10"                        #☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#####################################################################
+exp_identifier = f"{args.LLM}SD_{model_version}_{args.dataset}_10"                      
 model_name = args.backbone.replace("-", "").replace("/", "")
-CLIP_feature_gen_path = args.image_root + f"/{args.dataset}/{args.LLM}CLIP_{model_name}_feature_gen{args.Ngen}.hdf5"                        #☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#####################################################################
+CLIP_feature_gen_path = args.image_root + f"/{args.dataset}/{args.LLM}CLIP_{model_name}_feature_gen{args.Ngen}.hdf5"                       
 
 if os.path.exists(CLIP_feature_gen_path):
     print(" ==> Load existing feature.")
@@ -139,7 +139,7 @@ else:
         # 从 JSON 文件读取
         json_path = os.path.join(
             args.image_root,
-            f"{args.dataset}/json/{args.LLM}SD_{model_version}_{args.dataset}_{model_name}_{args.Ngen}.json"                        #☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#☆#####################################################################
+            f"{args.dataset}/json/{args.LLM}SD_{model_version}_{args.dataset}_{model_name}_{args.Ngen}.json"                    
         )
         if not os.path.exists(json_path):
             raise FileNotFoundError(f"JSON file {json_path} not found!")
