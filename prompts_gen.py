@@ -42,8 +42,8 @@ def main():
     
     parser = argparse.ArgumentParser(description="Generate prompts for a dataset using XAI API.")
     parser.add_argument('--dataset', default='ImageNet', help='CUB/FLO/PET/FOOD/ImageNet')
-    parser.add_argument('--image_root', default='D:\\PYproject\\clipI\\dataset', help='')
-    parser.add_argument('--output_dir', default='D:\\PYproject\\clipI\\dataset\\prompts', help='')
+    parser.add_argument('--image_root', default='dataset', help='')
+    parser.add_argument('--output_dir', default='dataset/prompts', help='')
     parser.add_argument('--api_key', default='', help='')
     parser.add_argument('--num_prompts', type=int, default=10, help='')
     args = parser.parse_args()
