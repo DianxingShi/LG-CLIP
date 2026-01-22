@@ -252,9 +252,8 @@ for scale in range(1, 11):
 
 dataset_name = args.dataset  # Change this to match the actual dataset
 backbone = args.backbone  # Change this to match the actual backbone
-base_feature_dir = f"D:\\PYproject\\clipI\\dataset\\{dataset_name}\\muti_scale"  
-# save_real_feature_path = f"D:\\PYproject\\clipI\\dataset\\{dataset_name}\\CLIP_{model_name}_feature_multi_scale.hdf5"  
-save_feature_path = f"D:\\PYproject\\clipI\\dataset\\{dataset_name}\\{args.LLM}CLIP_{model_name}_feature_gen{args.Ngen}_ms.hdf5"  
+base_feature_dir = f"dataset\\{dataset_name}\\muti_scale"  
+save_feature_path = f"dataset\\{dataset_name}\\{args.LLM}CLIP_{model_name}_feature_gen{args.Ngen}_ms.hdf5"  
 # Combine features
 combine_multi_scale_features(base_feature_dir, save_feature_path)
 print("Combined multi-scale features and labels saved successfully!")
