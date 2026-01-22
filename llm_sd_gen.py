@@ -32,7 +32,7 @@ parser.add_argument('--sd_xl', default=False, action="store_true", help='Use SD 
 parser.add_argument('--Ngen', default=10, type=int, help='number of generated images')
 parser.add_argument('--seed', default=2024, type=int, help='seed for reproducibility')
 parser.add_argument('--device', default='cuda:0', help='cpu/cuda:x')
-parser.add_argument('--json_file', default='dataset\prompts\CUB.json', help='Path to the JSON file with class prompts')
+parser.add_argument('--json_file', default='dataset/prompts/CUB.json', help='Path to the JSON file with class prompts')
 args = parser.parse_args()
 
 # ======================================== Set random seed ======================================== #
