@@ -191,8 +191,8 @@ for scale in range(1, 11):  # Multi-scale feature extraction (10 rounds)
 dataset_name = args.dataset
 model_name = args.backbone.replace("-", "").replace("/", "")
 # gen5t_model_name = re.sub(r"[A-Za-z]", "", args.backbone.replace("-", "").replace("/", ""))
-base_real_feature_dir = f"D:\\PYproject\\clipI\\dataset\\{dataset_name}\\multi_scale"  
-save_real_feature_path = f"D:\\PYproject\\clipI\\dataset\\{dataset_name}\\CLIP_{model_name}_feature_ms.hdf5"   
+base_real_feature_dir = f"dataset\\{dataset_name}\\multi_scale"  
+save_real_feature_path = f"dataset\\{dataset_name}\\CLIP_{model_name}_feature_ms.hdf5"   
 # Combine features
 combine_multi_scale_features(base_real_feature_dir, save_real_feature_path)
 print("Combined multi-scale features and labels saved successfully!")
