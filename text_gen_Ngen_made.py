@@ -1,173 +1,238 @@
+"""
+text_gen_Ngen_made.py
+---------------------
+Dynamic filtering of generated images based on CLIP classification confidence.
+
+Given a set of N_all=10 generated images per class, this script:
+  1. Computes CLIP text embeddings for all class names.
+  2. Computes CLIP visual embeddings for all generated images.
+  3. Ranks images by cosine similarity to their ground-truth class text embedding.
+  4. Selects the top-Ngen images per class, prioritizing correctly classified ones.
+  5. Saves the filtered image paths and similarity scores to a JSON index file.
+
+The output JSON is consumed by gen_feat.py and muti_scale_gen_feat.py
+when --Ngen != 10 (e.g., Ngen=5).
+
+Usage:
+  python text_gen_Ngen_made.py \\
+      --dataset CUB --Ngen 5 --LLM LLM_ [--backbone ViT-B/32] [--device cuda:0]
+"""
+
 import os
+import json
 import torch
 import argparse
 import numpy as np
-import json
 import torch.backends.cudnn as cudnn
 from tqdm import tqdm
 from PIL import Image
-from utils.myDataset import *
-import clip
 
+import clip
+from utils.myDataset import (
+    CUBDataset, FLODataset, PETDataset, FOODDataset,
+    ImageNetDataset, EUROSATDataset
+)
+
+
+# ===========================================================================
+# Feature Extraction Helpers
+# ===========================================================================
 
 def get_visualEmbedding(clip_model, dataframe, device, transform=None):
     """
-        - CLIP visual embeddings
-        - Note: features are normalized
+    Compute L2-normalized CLIP visual embeddings for (image_path, label) pairs.
+    Returns:
+        features: np.ndarray (N, D)
+        labels:   np.ndarray (N,)
     """
     with torch.no_grad():
-        features = []
-        labels = []
+        features, labels = [], []
         progress = tqdm(total=len(dataframe), ncols=100)
         for img_path, label in dataframe:
             progress.update(1)
-            img = Image.open((img_path)).convert('RGB')
+            img = Image.open(img_path).convert('RGB')
             if transform is not None:
                 img = transform(img)
-            img = img.unsqueeze(0).to(device)
-            feature = clip_model.encode_image(img).float().to(device)
-            feature /= feature.norm(dim=-1, keepdim=True)
-            features.append(feature.cpu())
+            img  = img.unsqueeze(0).to(device)
+            feat = clip_model.encode_image(img).float().to(device)
+            feat /= feat.norm(dim=-1, keepdim=True)
+            features.append(feat.cpu())
             labels.append(label)
         progress.close()
-    features = np.concatenate(features, axis=0)
-    labels = np.array(labels)
-    return features, labels
+    return np.concatenate(features, axis=0), np.array(labels)
 
 
 def get_textEmbedding(classnames, clip_model, args, norm=True):
     """
-        - CLIP text embeddings
-        - Note: features are normalized
+    Compute L2-normalized CLIP text embeddings for a list of class names.
+    Template: "A photo of a <classname>."
     """
     with torch.no_grad():
-        classnames = [classname.replace('_', ' ') for classname in classnames]
-        text_descriptions = [f"A photo of a {classname}." for classname in classnames]
-        text_tokens = clip.tokenize(text_descriptions, context_length=77).to(args.device)
-        text_features = clip_model.encode_text(text_tokens).float().to(args.device)
+        classnames = [c.replace('_', ' ') for c in classnames]
+        texts  = [f"A photo of a {c}." for c in classnames]
+        tokens = clip.tokenize(texts, context_length=77).to(args.device)
+        feats  = clip_model.encode_text(tokens).float().to(args.device)
         if norm:
-            text_features /= text_features.norm(dim=-1, keepdim=True)
-        return text_features
+            feats /= feats.norm(dim=-1, keepdim=True)
+    return feats
 
 
-# Set paths and args
+# ===========================================================================
+# Argument Parsing
+# ===========================================================================
+
 projectPath = os.path.dirname(os.path.abspath(__file__))
-parser = argparse.ArgumentParser(description="Dynamic Filtering and JSON Generation")
-parser.add_argument('--dataset', default='ImageNet', help='Dataset name: CUB')
-parser.add_argument('--image_root', default=projectPath + '/dataset', help='Path to image root')
-parser.add_argument('--gen_root_path', default=projectPath + '/dataset/SD_gen', help='Generated images path')                      
-parser.add_argument('--sd_2_1', default=True, action="store_true", help='Use SD 2.1 model')
-parser.add_argument('--Ngen', default=10, type=int, help='Number of images to select')
-parser.add_argument('--backbone', default='ViT-B/32', help='CLIP backbone')
-parser.add_argument('--LLM', default='LLM_', help='LLM_ or None')
-parser.add_argument('--device', default='cuda:0', help='Device: cpu/cuda:x')
+parser = argparse.ArgumentParser(
+    description="Select top-Ngen generated images per class based on CLIP similarity."
+)
+# --- Dataset ---
+parser.add_argument('--dataset',       default='ImageNet',
+                    help='Dataset name: CUB | FLO | PET | FOOD | ImageNet | EUROSAT')
+parser.add_argument('--image_root',    default=os.path.join(projectPath, 'dataset'),
+                    help='Root directory of datasets (default: ./dataset)')
+parser.add_argument('--gen_root_path', default=os.path.join(projectPath, 'dataset', 'SD_gen'),
+                    help='Root directory of generated images (default: ./dataset/SD_gen)')
+# --- SD Version ---
+parser.add_argument('--sd_2_1', default=True, action="store_true",
+                    help='Generated images from SD v2.1 (default)')
+# --- Selection ---
+parser.add_argument('--Ngen',   default=10, type=int,
+                    help='Number of images to select per class (default: 10)')
+parser.add_argument('--LLM',    default='LLM_',
+                    help='Prefix for LLM-guided generation: "LLM_" or "" (plain SD)')
+# --- Model ---
+parser.add_argument('--backbone', default='ViT-B/32',
+                    help='CLIP backbone for scoring: RN50 | ViT-B/32 | ViT-L/14')
+# --- Misc ---
+parser.add_argument('--device', default='cuda:0',
+                    help='Device: cpu | cuda:0 | cuda:1 ...')
 args = parser.parse_args()
 
-# Set random seed
+# ===========================================================================
+# Reproducibility
+# ===========================================================================
 torch.manual_seed(2024)
 np.random.seed(2024)
 cudnn.benchmark = True
 
+# ===========================================================================
 # Load CLIP
+# ===========================================================================
 clip_model, preprocess = clip.load(args.backbone, device=args.device)
 clip_model.eval()
 for p in clip_model.parameters():
     p.requires_grad = False
 
-# Load dataset
-if args.dataset == "CUB":
-    mydataset = CUBDataset(args)
-elif args.dataset == "FLO":
-    mydataset = FLODataset(args)
-elif args.dataset == "PET":
-    mydataset = PETDataset(args)
-elif args.dataset == "FOOD":
-    mydataset = FOODDataset(args)
-elif args.dataset == "ImageNet":
-    mydataset = ImageNetDataset(args)
-elif args.dataset == "EUROSAT":
-    mydataset = EUROSATDataset(args)
-else:
-    raise ValueError("Unsupported Dataset!")
+# ===========================================================================
+# Load Dataset
+# ===========================================================================
+DATASET_MAP = {
+    "CUB":      CUBDataset,
+    "FLO":      FLODataset,
+    "PET":      PETDataset,
+    "FOOD":     FOODDataset,
+    "ImageNet": ImageNetDataset,
+    "EUROSAT":  EUROSATDataset,
+}
+if args.dataset not in DATASET_MAP:
+    raise ValueError(f"Unknown dataset '{args.dataset}'. "
+                     f"Choose from: {list(DATASET_MAP.keys())}")
+mydataset = DATASET_MAP[args.dataset](args)
 all_names = mydataset.all_names
 
-# Text features
+# ===========================================================================
+# Compute Text Embeddings
+# ===========================================================================
 text_embeddings = get_textEmbedding(all_names, clip_model, args)
 
-# Image paths and labels
+# ===========================================================================
+# Collect Generated Image Paths (N_all = 10 per class)
+# ===========================================================================
 model_version = "2.1" if args.sd_2_1 else "1.4"
-if args.LLM=="LLM_":
-    grp=args.gen_root_path
+
+# Determine source folder based on LLM flag
+if args.LLM == "LLM_":
+    grp = args.gen_root_path  # LLM_SD_gen
 else:
-    grp=projectPath + '/dataset/SD_gen'
-gen_root_dir = os.path.join(grp, f"{args.LLM}SD_{model_version}_{args.dataset}_10")                       
+    grp = os.path.join(projectPath, 'dataset', 'SD_gen')
+
+# The full generation folder contains all 10 images per class
+gen_root_dir = os.path.join(grp, f"{args.LLM}SD_{model_version}_{args.dataset}_10")
 if not os.path.exists(gen_root_dir):
-    raise FileNotFoundError(f"Default folder {gen_root_dir} does not exist!")
+    raise FileNotFoundError(
+        f"Generated image folder not found: {gen_root_dir}\n"
+        f"Run sd_gen.py or llm_sd_gen.py first with Ngen=10."
+    )
 
 gen_files, gen_labels = [], []
 for idx, name in enumerate(all_names):
     img_dir = os.path.join(gen_root_dir, name)
     if not os.path.exists(img_dir):
-        raise FileNotFoundError(f"Folder for class {name} does not exist!")
-    for this_img in os.listdir(img_dir):
-        gen_files.append(os.path.join(img_dir, this_img))
-    gen_labels += [idx] * 10  # Default: Ngen=10
-assert len(gen_files) == len(all_names) * 10
+        raise FileNotFoundError(f"Class folder missing: {img_dir}")
+    for img_file in os.listdir(img_dir):
+        gen_files.append(os.path.join(img_dir, img_file))
+    gen_labels += [idx] * 10   # N_all = 10
 
-# Visual features
-gen_labels = np.array(gen_labels)
-gendf = list(zip(gen_files, gen_labels))
-gen_f, gen_l = get_visualEmbedding(clip_model, gendf, args.device, transform=preprocess)
-gen_f = torch.from_numpy(gen_f).float().to(args.device)
-gen_l = torch.from_numpy(gen_l).long().to(args.device)
+assert len(gen_files) == len(all_names) * 10, \
+    f"Expected {len(all_names) * 10} images, found {len(gen_files)}"
 
-# Classifier
-simi_scores = torch.matmul(gen_f, text_embeddings.T)
-predicted_classes = torch.argmax(simi_scores, dim=1)
+# ===========================================================================
+# Compute Visual Embeddings
+# ===========================================================================
+gen_labels_np = np.array(gen_labels)
+gendf         = list(zip(gen_files, gen_labels_np))
+gen_f, gen_l  = get_visualEmbedding(clip_model, gendf, args.device, transform=preprocess)
+gen_f  = torch.from_numpy(gen_f).float().to(args.device)
+gen_l  = torch.from_numpy(gen_l).long().to(args.device)
 
-# Organize results
+# ===========================================================================
+# Classify and Score
+# ===========================================================================
+simi_scores       = torch.matmul(gen_f, text_embeddings.T)   # (N, C)
+predicted_classes = torch.argmax(simi_scores, dim=1)          # (N,)
+
+# ===========================================================================
+# Per-class Filtering: prefer correct predictions, sort by confidence
+# ===========================================================================
 result_dict = {i: [] for i in range(len(all_names))}
-for idx, (gen_file, gen_label) in enumerate(zip(gen_files, gen_l)):
-    label = int(gen_label.item())
-    prob = simi_scores[idx, label].item()
-    result_dict[label].append({"image": gen_file, "probability": prob})
+for img_idx, (gen_file, label) in enumerate(zip(gen_files, gen_l)):
+    label_int = int(label.item())
+    prob      = simi_scores[img_idx, label_int].item()
+    result_dict[label_int].append({"image": gen_file, "probability": prob})
 
-# Filter top Ngen with priority for correct predictions
 filtered_result_dict = {}
+for label_int, images in result_dict.items():
+    # Split into correctly and incorrectly classified images
+    correct_imgs   = [img for img in images
+                      if predicted_classes[gen_files.index(img["image"])] == label_int]
+    incorrect_imgs = [img for img in images if img not in correct_imgs]
 
-for label in result_dict:
-    
-    images = result_dict[label]
+    # Sort each group by CLIP similarity (descending)
+    correct_imgs   = sorted(correct_imgs,   key=lambda x: x["probability"], reverse=True)
+    incorrect_imgs = sorted(incorrect_imgs, key=lambda x: x["probability"], reverse=True)
 
-   
-    correct_images = [img for img in images if predicted_classes[gen_files.index(img["image"])] == label]
-    incorrect_images = [img for img in images if img not in correct_images]
+    # Select top-Ngen, prioritizing correct predictions
+    selected = correct_imgs[:args.Ngen]
+    if len(selected) < args.Ngen:
+        selected += incorrect_imgs[:args.Ngen - len(selected)]
 
-    
-    correct_images = sorted(correct_images, key=lambda x: x["probability"], reverse=True)
-    incorrect_images = sorted(incorrect_images, key=lambda x: x["probability"], reverse=True)
+    filtered_result_dict[label_int] = selected
 
-    
-    selected_images = correct_images[:args.Ngen]
-
-   
-    if len(selected_images) < args.Ngen:
-        needed = args.Ngen - len(selected_images)
-        selected_images += incorrect_images[:needed]
-
-    
-    filtered_result_dict[label] = selected_images
-
-# Save to JSON
-json_output_dir = os.path.join(args.image_root, f"{args.dataset}/json")
+# ===========================================================================
+# Save JSON Index
+# ===========================================================================
+backbone_name   = args.backbone.replace("/", "").replace("-", "")
+json_output_dir = os.path.join(args.image_root, args.dataset, "json")
 os.makedirs(json_output_dir, exist_ok=True)
-backbone_name = args.backbone.replace("/", "").replace("-", "")
 json_output_path = os.path.join(
     json_output_dir,
-    f"{args.LLM}SD_{model_version}_{args.dataset}_{backbone_name}_{args.Ngen}.json"                       
+    f"{args.LLM}SD_{model_version}_{args.dataset}_{backbone_name}_{args.Ngen}.json"
 )
-json_result = {all_names[label]: filtered_result_dict[label] for label in filtered_result_dict}
-with open(json_output_path, 'w', encoding='utf-8') as json_file:
-    json.dump(json_result, json_file, indent=4, ensure_ascii=False)
+json_result = {
+    all_names[label]: filtered_result_dict[label]
+    for label in filtered_result_dict
+}
+with open(json_output_path, 'w', encoding='utf-8') as jf:
+    json.dump(json_result, jf, indent=4, ensure_ascii=False)
 
-
+print(f"Filtered JSON index saved to: {json_output_path}")

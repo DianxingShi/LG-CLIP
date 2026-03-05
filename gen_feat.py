@@ -1,178 +1,245 @@
+"""
+gen_feat.py
+-----------
+Extract CLIP visual and text features from generated images (SD / LLM+SD)
+and evaluate the generation quality via zero-shot classification accuracy.
+
+Workflow:
+  1. Load or extract text embeddings for all class names.
+  2. Enumerate generated images in <gen_root_path>/<exp_identifier>/<class_name>/
+     OR load paths from a JSON file (when Ngen != 10).
+  3. Extract L2-normalized visual embeddings via CLIP.
+  4. Compute cosine-similarity-based zero-shot accuracy on generated images.
+  5. Cache features in HDF5 for reuse by mega.py.
+"""
+
 import os
-import re
+import json
 import h5py
 import torch
 import random
 import argparse
 import numpy as np
-import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
-import json
 from tqdm import tqdm
 from PIL import Image
 
 import clip
-from utils.myDataset import *
-from utils.helper_func import *
+from utils.myDataset import (
+    CUBDataset, FLODataset, PETDataset, FOODDataset,
+    ImageNetDataset, EUROSATDataset
+)
 
+
+# ===========================================================================
+# Feature Extraction Helpers
+# ===========================================================================
 
 def get_textEmbedding(classnames, clip_model, args, norm=True):
     """
-        - CLIP text embeddings
-        - Note: features are normalized
+    Compute L2-normalized CLIP text embeddings for each class name.
+    Template: "A photo of a <classname>."
     """
     with torch.no_grad():
-        classnames = [classname.replace('_', ' ') for classname in classnames]
-        if args.dataset == "AWA2":
-            classnames = [classname.replace('+', ' ') for classname in classnames]
-        text_descriptions = [f"A photo of a {classname}." for classname in classnames]
-        text_tokens = clip.tokenize(text_descriptions, context_length=77).to(args.device)
-        text_features = clip_model.encode_text(text_tokens).float().to(args.device)
+        classnames = [c.replace('_', ' ') for c in classnames]
+        texts  = [f"A photo of a {c}." for c in classnames]
+        tokens = clip.tokenize(texts, context_length=77).to(args.device)
+        feats  = clip_model.encode_text(tokens).float().to(args.device)
         if norm:
-            text_features /= text_features.norm(dim=-1, keepdim=True)
-        return text_features
+            feats /= feats.norm(dim=-1, keepdim=True)
+    return feats
 
 
 def get_visualEmbedding(clip_model, dataframe, device, transform=None):
     """
-        - CLIP visual embeddings
-        - Note: features are normalized
+    Compute L2-normalized CLIP visual embeddings for (image_path, label) pairs.
+    Returns:
+        features: np.ndarray (N, D)
+        labels:   np.ndarray (N,)
     """
     with torch.no_grad():
-        features = []
-        labels = []
+        features, labels = [], []
         progress = tqdm(total=len(dataframe), ncols=100)
         for img_path, label in dataframe:
             progress.update(1)
-            img = Image.open((img_path)).convert('RGB')
+            img = Image.open(img_path).convert('RGB')
             if transform is not None:
                 img = transform(img)
-            img = img.unsqueeze(0).to(device)
-            feature = clip_model.encode_image(img).float().to(device)
-            feature /= feature.norm(dim=-1, keepdim=True)
-            features.append(feature.cpu())
+            img  = img.unsqueeze(0).to(device)
+            feat = clip_model.encode_image(img).float().to(device)
+            feat /= feat.norm(dim=-1, keepdim=True)
+            features.append(feat.cpu())
             labels.append(label)
         progress.close()
-    features = np.concatenate(features, axis=0)
-    labels = np.array(labels)
-    return features, labels
+    return np.concatenate(features, axis=0), np.array(labels)
 
+
+# ===========================================================================
+# Argument Parsing
+# ===========================================================================
 
 projectPath = os.path.dirname(os.path.abspath(__file__))
-parser = argparse.ArgumentParser(description="")
-# -------------------- Path config --------------------#
-parser.add_argument('--dataset', default='ImageNet', help='dataset: CUB')
-parser.add_argument('--image_root', default=projectPath + '/dataset', help='Path to image root')
-parser.add_argument('--gen_root_path', default=projectPath + '/dataset/LLM_SD_gen')                        
-# -------------------- other config --------------------#
-parser.add_argument('--sd_2_1', default=True, action="store_true", help='SD version')
-parser.add_argument('--sd_xl', default=False, action="store_true", help='Use SD XL model')
-parser.add_argument('--Ngen', default=10, type=int, help='number of generated images')
-parser.add_argument('--backbone', default='RN50', help='CLIP backbone')
-parser.add_argument('--LLM', default='', help='LLM_ or None')
-parser.add_argument('--seed', default=2024, type=int, help='seed for reproducibility')
-parser.add_argument('--device', default='cuda:0', help='cpu/cuda:x')
+parser = argparse.ArgumentParser(
+    description="Extract CLIP features from generated images and evaluate quality."
+)
+# --- Paths ---
+parser.add_argument('--dataset',       default='ImageNet',
+                    help='Dataset name: CUB | FLO | PET | FOOD | ImageNet | EUROSAT')
+parser.add_argument('--image_root',    default=os.path.join(projectPath, 'dataset'),
+                    help='Root directory containing all datasets (default: ./dataset)')
+parser.add_argument('--gen_root_path', default=os.path.join(projectPath, 'dataset', 'LLM_SD_gen'),
+                    help='Root directory for LLM-guided generated images (default: ./dataset/LLM_SD_gen)')
+# --- SD Version ---
+parser.add_argument('--sd_2_1',  default=True, action="store_true",
+                    help='Use Stable Diffusion v2.1 (default: True)')
+parser.add_argument('--sd_xl',   default=False, action="store_true",
+                    help='Use Stable Diffusion XL (overrides --sd_2_1)')
+# --- Generation ---
+parser.add_argument('--Ngen',    default=10, type=int,
+                    help='Number of generated images per class (default: 10)')
+parser.add_argument('--LLM',     default='',
+                    help='Prefix for LLM-guided generation: "LLM_" or "" (empty = plain SD)')
+# --- Model ---
+parser.add_argument('--backbone', default='RN50',
+                    help='CLIP backbone: RN50 | RN101 | ViT-B/32 | ViT-B/16 | ViT-L/14')
+# --- Misc ---
+parser.add_argument('--seed',    default=2024, type=int,
+                    help='Random seed for reproducibility')
+parser.add_argument('--device',  default='cuda:0',
+                    help='Device: cpu | cuda:0 | cuda:1 ...')
 args = parser.parse_args()
-# ======================================== Set random seed ======================================== #
+
+# ===========================================================================
+# Reproducibility
+# ===========================================================================
 random.seed(args.seed)
 np.random.seed(args.seed)
 torch.manual_seed(args.seed)
 torch.cuda.manual_seed_all(args.seed)
 cudnn.benchmark = True
-# ======================================== CLIP ======================================== #
+
+# ===========================================================================
+# Load CLIP Model
+# ===========================================================================
 clip_model, preprocess = clip.load(args.backbone, device=args.device)
 clip_model.eval()
 for p in clip_model.parameters():
     p.requires_grad = False
-# ======================================== Prepare dataset ======================================== #
-if args.dataset == "CUB":
-    mydataset = CUBDataset(args)
-elif args.dataset == "FLO":
-    mydataset = FLODataset(args)
-elif args.dataset == "PET":
-    mydataset = PETDataset(args)
-elif args.dataset == "FOOD":
-    mydataset = FOODDataset(args)
-elif args.dataset == "ImageNet":
-    mydataset = ImageNetDataset(args)
-elif args.dataset == "EUROSAT":
-    mydataset = EUROSATDataset(args)
-else:
-    raise ValueError("UnKnown Dataset!")
-all_names = mydataset.all_names
-# ======================================== CLIP features ======================================== #
-model_version = "XL" if args.sd_xl else "2.1" if args.sd_2_1 else "1.4"
-exp_identifier = f"{args.LLM}SD_{model_version}_{args.dataset}_10"                      
-model_name = args.backbone.replace("-", "").replace("/", "")
-CLIP_feature_gen_path = args.image_root + f"/{args.dataset}/{args.LLM}CLIP_{model_name}_feature_gen{args.Ngen}.hdf5"                       
 
+# ===========================================================================
+# Load Dataset
+# ===========================================================================
+DATASET_MAP = {
+    "CUB":      CUBDataset,
+    "FLO":      FLODataset,
+    "PET":      PETDataset,
+    "FOOD":     FOODDataset,
+    "ImageNet": ImageNetDataset,
+    "EUROSAT":  EUROSATDataset,
+}
+if args.dataset not in DATASET_MAP:
+    raise ValueError(f"Unknown dataset '{args.dataset}'. "
+                     f"Choose from: {list(DATASET_MAP.keys())}")
+mydataset = DATASET_MAP[args.dataset](args)
+all_names = mydataset.all_names
+
+# ===========================================================================
+# Resolve Paths & Cache File
+# ===========================================================================
+model_version  = "XL" if args.sd_xl else "2.1" if args.sd_2_1 else "1.4"
+# e.g. "LLM_SD_2.1_CUB_10" or "SD_2.1_CUB_10"
+exp_identifier = f"{args.LLM}SD_{model_version}_{args.dataset}_{args.Ngen}"
+model_name     = args.backbone.replace("-", "").replace("/", "")
+# HDF5 cache file for generated image features
+CLIP_feature_gen_path = os.path.join(
+    args.image_root, args.dataset,
+    f"{args.LLM}CLIP_{model_name}_feature_gen{args.Ngen}.hdf5"
+)
+
+# ===========================================================================
+# Feature Extraction / Loading
+# ===========================================================================
 if os.path.exists(CLIP_feature_gen_path):
-    print(" ==> Load existing feature.")
-    hf = h5py.File(CLIP_feature_gen_path, 'r')
-    gen_f, gen_l = np.array(hf.get('gen_f')), np.array(hf.get('gen_l'))
-    all_embeddings = np.array(hf.get('all_embeddings'))
-    print(" ====> Feature loaded.")
-    gen_f = torch.from_numpy(gen_f).float().to(args.device)
-    gen_l = torch.from_numpy(gen_l).float().to(args.device)
-    all_embeddings = torch.from_numpy(all_embeddings).to(args.device)
+    print(" ==> Loading cached generated-image features...")
+    hf             = h5py.File(CLIP_feature_gen_path, 'r')
+    gen_f          = torch.from_numpy(np.array(hf['gen_f'])).float().to(args.device)
+    gen_l          = torch.from_numpy(np.array(hf['gen_l'])).float().to(args.device)
+    all_embeddings = torch.from_numpy(np.array(hf['all_embeddings'])).to(args.device)
+    print(" ====> Cache loaded.")
 else:
-    print(" ==> Extract feature now.")
-    # -------------------- Textual features --------------------#
-    print(" ====> Getting textual features from CLIP's text Encoder.")
+    print(" ==> Extracting features from generated images...")
+    # --- Text embeddings ---
+    print(" ====> Computing text embeddings from CLIP text encoder.")
     all_embeddings = get_textEmbedding(all_names, clip_model, args)
-    print("Text embeddings shape: ", all_embeddings.shape)
-    # -------------------- Visual features --------------------#
-    if args.LLM=="LLM_":
-        grp=args.gen_root_path
+    print("  Text embeddings shape:", all_embeddings.shape)
+
+    # --- Determine source folder for generated images ---
+    if args.LLM == "LLM_":
+        # LLM-guided generation: images in gen_root_path
+        grp = args.gen_root_path
     else:
-        grp=projectPath + '/dataset/SD_gen'
+        # Plain SD generation: images in dataset/SD_gen
+        grp = os.path.join(projectPath, 'dataset', 'SD_gen')
+
+    # --- Collect generated image paths ---
     gen_files, gen_labels = [], []
     if args.Ngen == 10:
-        # 原始读取方式
+        # Standard case: enumerate images directly from folder
         for idx, name in enumerate(all_names):
-            imgDir = f"{grp}/{exp_identifier}/{name}"
-            for this_img in os.listdir(imgDir):
-                filePath = os.path.join(imgDir, this_img)
-                gen_files.append(filePath)
+            img_dir = os.path.join(grp, exp_identifier, name)
+            for img_file in os.listdir(img_dir):
+                gen_files.append(os.path.join(img_dir, img_file))
             gen_labels += [idx] * args.Ngen
     else:
-        # 从 JSON 文件读取
+        # Non-standard Ngen: read from a pre-generated JSON index file
         json_path = os.path.join(
-            args.image_root,
-            f"{args.dataset}/json/{args.LLM}SD_{model_version}_{args.dataset}_{model_name}_{args.Ngen}.json"                    
+            args.image_root, args.dataset, "json",
+            f"{args.LLM}SD_{model_version}_{args.dataset}_{model_name}_{args.Ngen}.json"
         )
         if not os.path.exists(json_path):
-            raise FileNotFoundError(f"JSON file {json_path} not found!")
-        with open(json_path, 'r', encoding='utf-8') as json_file:
-            json_data = json.load(json_file)
-            for idx, name in enumerate(all_names):
-                for entry in json_data[name]:
-                    gen_files.append(entry['image'])
-                    gen_labels.append(idx)
+            raise FileNotFoundError(
+                f"JSON index file not found: {json_path}\n"
+                f"Run text_gen_Ngen_made.py first to generate it."
+            )
+        with open(json_path, 'r', encoding='utf-8') as jf:
+            json_data = json.load(jf)
+        for idx, name in enumerate(all_names):
+            for entry in json_data[name]:
+                gen_files.append(entry['image'])
+                gen_labels.append(idx)
 
-    assert len(gen_files) == len(all_names) * args.Ngen
+    assert len(gen_files) == len(all_names) * args.Ngen, \
+        f"Expected {len(all_names) * args.Ngen} images, got {len(gen_files)}"
+
     gen_labels = np.array(gen_labels)
-    gendf = list(zip(gen_files, gen_labels))
-    print(" ====> Getting visual features from CLIP's visual Encoder.")
+    gendf      = list(zip(gen_files, gen_labels))
+
+    # --- Visual embeddings ---
+    print(" ====> Computing visual embeddings from CLIP image encoder.")
     gen_f, gen_l = get_visualEmbedding(clip_model, gendf, args.device, transform=preprocess)
     gen_f = gen_f.reshape(len(all_names), args.Ngen, gen_f.shape[-1])
     gen_l = gen_l.reshape(len(all_names), args.Ngen, 1)
-    print("Gen embeddings shape: ", gen_f.shape)
+    print("  Gen embeddings shape:", gen_f.shape)
 
-    f = h5py.File(CLIP_feature_gen_path, "w")
-    f.create_dataset('gen_f', data=gen_f, compression="gzip")
-    f.create_dataset('gen_l', data=gen_l, compression="gzip")
-    f.create_dataset('all_embeddings', data=all_embeddings.cpu(), compression="gzip")
-    f.close()
+    # --- Save to HDF5 cache ---
+    os.makedirs(os.path.dirname(CLIP_feature_gen_path), exist_ok=True)
+    with h5py.File(CLIP_feature_gen_path, "w") as f:
+        f.create_dataset('gen_f',          data=gen_f,               compression="gzip")
+        f.create_dataset('gen_l',          data=gen_l,               compression="gzip")
+        f.create_dataset('all_embeddings', data=all_embeddings.cpu(), compression="gzip")
+    print(" ====> Features saved to cache.")
 
-    print(" ====> Feature saved.")
     gen_f = torch.from_numpy(gen_f).float().to(args.device)
     gen_l = torch.from_numpy(gen_l).float().to(args.device)
-# ======================================== CLIP classifier ======================================== #
-gen_f = gen_f.view(-1, gen_f.size(-1))
-gen_l = gen_l.view(-1)
-simi_scores = torch.matmul(gen_f, all_embeddings.T)
+
+# ===========================================================================
+# Zero-shot Classification on Generated Images
+# ===========================================================================
+# Flatten (C, Ngen, D) -> (C*Ngen, D) for classification
+gen_f_flat        = gen_f.view(-1, gen_f.size(-1))
+gen_l_flat        = gen_l.view(-1)
+simi_scores       = torch.matmul(gen_f_flat, all_embeddings.T)
 predicted_classes = torch.argmax(simi_scores, dim=1)
-correct = torch.sum(predicted_classes == gen_l)
-acc = correct.item() / len(gen_l)
-print("[{}]: Gen Acc={:.2f}%".format(args.backbone, acc * 100))
+correct           = torch.sum(predicted_classes == gen_l_flat)
+acc               = correct.item() / len(gen_l_flat)
+print(f"[{args.backbone}] Gen-image Zero-shot Acc = {acc * 100:.2f}%")

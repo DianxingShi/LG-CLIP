@@ -1,3 +1,26 @@
+"""
+utils/myDataset.py
+------------------
+Dataset loader classes for LG-CLIP experiments.
+
+Supported datasets:
+  - CUBDataset    : CUB-200-2011 (200 fine-grained bird species)
+  - FLODataset    : Oxford 102 Flowers
+  - PETDataset    : Oxford-IIIT Pets (37 categories)
+  - FOODDataset   : Food-101 (101 food categories)
+  - ImageNetDataset: ImageNet ILSVRC2012 validation set
+  - EUROSATDataset : EuroSAT (10 satellite image categories)
+
+All loaders expect the following directory structure under `args.image_root`:
+  dataset/
+    CUB/CUB_200_2011/          # images/, classes.txt, image_class_labels.txt, ...
+    FLO/Flowers102/            # jpg/, split_OxfordFlowers.json, cat_to_name.json
+    PET/OxfordPets/            # images/, split_OxfordPets.json
+    FOOD/                      # images/, split_Food101.json, meta/classes.txt
+    ImageNet/images/ILSVRC2012_img_val/  # <synset_id>/*.JPEG
+    EUROSAT/                   # 2750/, split_EuroSAT.json
+"""
+
 import re
 import os
 import json
@@ -6,275 +29,265 @@ import pickle
 import numpy as np
 import pandas as pd
 from PIL import Image
-import scipy.io as sio
-from torch.utils.data import Dataset,DataLoader
+from torch.utils.data import Dataset, DataLoader
 
 
-class CUBDataset():
+# ===========================================================================
+# CUB-200-2011
+# ===========================================================================
+
+class CUBDataset:
     def __init__(self, args):
         """
-            - args: need
-                image_root -> local dataset root path
+        Load the CUB-200-2011 dataset.
+        Expected directory: <image_root>/CUB/CUB_200_2011/
+        Files needed:
+          - image_class_labels.txt  (image_id, class_id)
+          - images.txt              (image_id, relative_path)
+          - train_test_split.txt    (image_id, is_train)
+          - classes.txt             (class_id, class_name)
+          - images/                 (actual image files)
         """
-        # get labels & image_names
-        labels_df = pd.read_csv(args.image_root + "/CUB/CUB_200_2011/image_class_labels.txt", sep=' ', header=None)
-        self.labels = np.array(labels_df.iloc[:, 1]).astype(np.int64).squeeze() - 1
+        base = os.path.join(args.image_root, "CUB", "CUB_200_2011")
 
-        files_df = pd.read_csv(args.image_root + "/CUB/CUB_200_2011/images.txt", sep=' ', header=None)
-        self.image_files = list(files_df.iloc[:, 1])
+        # Labels (1-indexed → 0-indexed)
+        labels_df    = pd.read_csv(os.path.join(base, "image_class_labels.txt"), sep=' ', header=None)
+        self.labels  = np.array(labels_df.iloc[:, 1]).astype(np.int64).squeeze() - 1
 
-        def convert_path(image_files, img_dir):
-            new_image_files = []
-            for image_file in image_files:
-                image_file = os.path.join(img_dir, image_file)
-                new_image_files.append(image_file)
-            return np.array(new_image_files)
-        self.image_files = convert_path(self.image_files, args.image_root + f"/CUB/CUB_200_2011/images")
+        # Image file paths
+        files_df          = pd.read_csv(os.path.join(base, "images.txt"), sep=' ', header=None)
+        image_rel_paths   = list(files_df.iloc[:, 1])
+        img_root          = os.path.join(base, "images")
+        self.image_files  = np.array([os.path.join(img_root, p) for p in image_rel_paths])
 
-        # get splits
-        split_df = pd.read_csv(args.image_root + "/CUB/CUB_200_2011/train_test_split.txt", sep=' ', header=None)
-        self.splits = np.array(split_df.iloc[:, 1]) # 1-> training, 0-> test
+        # Train / test split (1 = train, 0 = test)
+        split_df     = pd.read_csv(os.path.join(base, "train_test_split.txt"), sep=' ', header=None)
+        splits       = np.array(split_df.iloc[:, 1])
+        train_loc    = np.where(splits == 1)[0]
+        test_loc     = np.where(splits == 0)[0]
 
-        self.train_loc = np.where(self.splits == 1)[0]
-        self.test_loc = np.where(self.splits == 0)[0]
-        
-        # data files
-        self.train_files = self.image_files[self.train_loc]
-        self.test_files = self.image_files[self.test_loc]
+        self.train_files  = self.image_files[train_loc]
+        self.test_files   = self.image_files[test_loc]
+        self.train_labels = torch.from_numpy(self.labels[train_loc]).long()
+        self.test_labels  = torch.from_numpy(self.labels[test_loc]).long()
 
-        # get label idxs in mat
-        self.train_labels = torch.from_numpy(self.labels[self.train_loc]).long()
-        self.test_labels = torch.from_numpy(self.labels[self.test_loc]).long()
-
-        # get class_names
-        names_df = pd.read_csv(args.image_root + "/CUB/CUB_200_2011/classes.txt", sep=' ', header=None)
-        allclasses_name = names_df.iloc[:, 1]
-        self.all_names = [re.sub(r'\d+\.', '', name) for name in allclasses_name]
-        self.all_names = change_form(self.all_names)
+        # Class names (strip numeric prefix, e.g. "001.Black_footed_Albatross" → "Black footed Albatross")
+        names_df      = pd.read_csv(os.path.join(base, "classes.txt"), sep=' ', header=None)
+        raw_names     = names_df.iloc[:, 1]
+        cleaned_names = [re.sub(r'\d+\.', '', name) for name in raw_names]
+        self.all_names = change_form(cleaned_names)
 
 
-class FLODataset():
+# ===========================================================================
+# Oxford 102 Flowers
+# ===========================================================================
+
+class FLODataset:
     def __init__(self, args):
         """
-            - args: need
-                image_root -> local dataset root path
+        Load the Oxford 102 Flowers dataset.
+        Expected directory: <image_root>/FLO/Flowers102/
+        Files needed:
+          - split_OxfordFlowers.json  (train/test splits with [rel_path, label] pairs)
+          - cat_to_name.json          (category index → flower name)
+          - jpg/                      (image files)
         """
-        # get labels & image_names
-        # labels_mat = sio.loadmat(args.image_root + "/FLO/Flowers102/imagelabels.mat")
-        # self.labels = labels_mat['labels'].astype(np.int64).squeeze()-1
-        with open(args.image_root + "/FLO/Flowers102/split_OxfordFlowers.json", 'r') as file:
-            split = json.load(file)
+        base = os.path.join(args.image_root, "FLO", "Flowers102")
+
+        with open(os.path.join(base, "split_OxfordFlowers.json"), 'r') as f:
+            split = json.load(f)
+
+        img_root = os.path.join(base, "jpg")
+
+        # Extract file paths and labels from split
+        train_df   = split["train"]
+        test_df    = split["test"]
+
+        self.train_files  = np.array([os.path.join(img_root, d[0]) for d in train_df])
+        self.train_labels = torch.from_numpy(np.array([d[1] for d in train_df])).long()
+
+        self.test_files   = np.array([os.path.join(img_root, d[0]) for d in test_df])
+        self.test_labels  = torch.from_numpy(np.array([d[1] for d in test_df])).long()
+
+        # Class names (1-indexed JSON keys)
+        with open(os.path.join(base, "cat_to_name.json"), 'r') as f:
+            name_df = json.load(f)
+        self.all_names = [name_df[str(idx)] for idx in range(1, 103)]
+
+
+# ===========================================================================
+# Oxford-IIIT Pets
+# ===========================================================================
+
+class PETDataset:
+    def __init__(self, args):
+        """
+        Load the Oxford-IIIT Pets dataset.
+        Expected directory: <image_root>/PET/OxfordPets/
+        Files needed:
+          - split_OxfordPets.json  (train/test splits with [rel_path, label, class_name] triples)
+          - images/                (image files)
+        """
+        base = os.path.join(args.image_root, "PET", "OxfordPets")
+
+        with open(os.path.join(base, "split_OxfordPets.json"), 'r') as f:
+            split = json.load(f)
+
+        img_root = os.path.join(base, "images")
+
         train_df = split["train"]
-        # val_df = split["val"]
-        test_df = split["test"]
+        test_df  = split["test"]
 
-        self.train_files = [train_data[0] for train_data in train_df]
-        self.train_labels = [train_data[1] for train_data in train_df]
+        self.train_files  = np.array([os.path.join(img_root, d[0]) for d in train_df])
+        self.train_labels = torch.from_numpy(np.array([d[1] for d in train_df])).long()
 
-        self.test_files = [test_data[0] for test_data in test_df]
-        self.test_labels = [test_data[1] for test_data in test_df]
+        self.test_files   = np.array([os.path.join(img_root, d[0]) for d in test_df])
+        self.test_labels  = torch.from_numpy(np.array([d[1] for d in test_df])).long()
 
-
-        def convert_path(image_files, img_dir):
-            new_image_files = []
-            for image_file in image_files:
-                image_file = os.path.join(img_dir, image_file)
-                new_image_files.append(image_file)
-            return np.array(new_image_files)
-        self.train_files = convert_path(self.train_files, args.image_root + f"/FLO/Flowers102/jpg")
-        self.test_files = convert_path(self.test_files, args.image_root + f"/FLO/Flowers102/jpg")
-
-        # get label
-        self.train_labels = torch.from_numpy(np.array(self.train_labels)).long()
-        self.test_labels = torch.from_numpy(np.array(self.test_labels)).long()
-
-        # get class_names
-        with open(args.image_root + "/FLO/Flowers102/cat_to_name.json", 'r') as file:
-            name_df = json.load(file)
-        allclasses_name = [name_df[str(idx)] for idx in range(1, 103)]
-        self.all_names = allclasses_name
+        # Derive class names from the sorted unique set in training split
+        self.all_names = change_form(sorted(set([d[2] for d in train_df])))
 
 
-class PETDataset():
+# ===========================================================================
+# Food-101
+# ===========================================================================
+
+class FOODDataset:
     def __init__(self, args):
         """
-            - args: need
-                image_root -> local dataset root path
+        Load the Food-101 dataset.
+        Expected directory: <image_root>/FOOD/
+        Files needed:
+          - split_Food101.json   (train/test splits)
+          - images/              (image files)
+          - meta/classes.txt     (101 class names, one per line)
         """
-        # get labels & image_names
-        with open(args.image_root + "/PET/OxfordPets/split_OxfordPets.json", 'r') as file:
-            split = json.load(file)
+        base = os.path.join(args.image_root, "FOOD")
+
+        with open(os.path.join(base, "split_Food101.json"), 'r') as f:
+            split = json.load(f)
+
+        img_root = os.path.join(base, "images")
+
         train_df = split["train"]
-        # val_df = split["val"]
-        test_df = split["test"]
+        test_df  = split["test"]
 
-        self.train_files = [train_data[0] for train_data in train_df]
-        self.train_labels = [train_data[1] for train_data in train_df]
+        self.train_files  = np.array([os.path.join(img_root, d[0]) for d in train_df])
+        self.train_labels = torch.from_numpy(np.array([d[1] for d in train_df])).long()
 
-        self.test_files = [test_data[0] for test_data in test_df]
-        self.test_labels = [test_data[1] for test_data in test_df]
+        self.test_files   = np.array([os.path.join(img_root, d[0]) for d in test_df])
+        self.test_labels  = torch.from_numpy(np.array([d[1] for d in test_df])).long()
 
-        def convert_path(image_files, img_dir):
-            new_image_files = []
-            for image_file in image_files:
-                image_file = os.path.join(img_dir, image_file)
-                new_image_files.append(image_file)
-            return np.array(new_image_files)
-        self.train_files = convert_path(self.train_files, args.image_root + f"/PET/OxfordPets/images")
-        self.test_files = convert_path(self.test_files, args.image_root + f"/PET/OxfordPets/images")
-        # print(f"Number of test images in PET dataset: {len(self.test_files)}")
-        # get label
-        self.train_labels = torch.from_numpy(np.array(self.train_labels)).long()
-        self.test_labels = torch.from_numpy(np.array(self.test_labels)).long()
-
-        # get class_names
-        allclasses_name = sorted(set([train_data[2] for train_data in train_df]))
-        self.all_names = change_form(allclasses_name)
-    
-    
+        # Class names from text file
+        with open(os.path.join(base, "meta", "classes.txt"), "r") as f:
+            self.all_names = change_form([line.strip() for line in f.readlines()])
 
 
-class FOODDataset():
-    def __init__(self, args):
-        """
-            - args: need
-                image_root -> local dataset root path
-        """
-        # get labels & image_names
-        with open(args.image_root + "/FOOD/split_Food101.json", 'r') as file:
-            split = json.load(file)
-        train_df = split["train"]
-        # val_df = split["val"]
-        test_df = split["test"]
-
-        self.train_files = [train_data[0] for train_data in train_df]
-        self.train_labels = [train_data[1] for train_data in train_df]
-
-        self.test_files = [test_data[0] for test_data in test_df]
-        self.test_labels = [test_data[1] for test_data in test_df]
-
-        def convert_path(image_files, img_dir):
-            new_image_files = []
-            for image_file in image_files:
-                image_file = os.path.join(img_dir, image_file)
-                new_image_files.append(image_file)
-            return np.array(new_image_files)
-        self.train_files = convert_path(self.train_files, args.image_root + f"/FOOD/images")
-        self.test_files = convert_path(self.test_files, args.image_root + f"/FOOD/images")
-
-        # get label
-        self.train_labels = torch.from_numpy(np.array(self.train_labels)).long()
-        self.test_labels = torch.from_numpy(np.array(self.test_labels)).long()
-
-        # get class_names
-        with open(args.image_root + "/FOOD/meta/classes.txt", "r") as f:
-            lines = f.readlines()
-            allclasses_name = [line.strip() for line in lines]
-        self.all_names = change_form(allclasses_name)
-
-
+# ===========================================================================
+# ImageNet ILSVRC2012 (Validation Set)
+# ===========================================================================
 
 class ImageNetDataset:
     def __init__(self, args):
         """
-        - args: 需要包含以下参数
-            image_root -> 数据集的根路径
+        Load the ImageNet ILSVRC2012 validation set.
+        Expected directory: <image_root>/ImageNet/images/ILSVRC2012_img_val/
+        Structure: one subfolder per synset, containing .JPEG files.
+
+        Note: the validation set is used for both train and test here
+        (zero-shot evaluation scenario, no training needed).
         """
-        # 图像验证集路径
-        self.image_root = os.path.join(args.image_root, "ImageNet/images/ILSVRC2012_img_val/")
-        self.image_files = []  # 存储图像文件路径
-        self.image_classes = []  # 存储图像的类名
+        val_root = os.path.join(
+            args.image_root, "ImageNet", "images", "ILSVRC2012_img_val"
+        )
 
-        # 遍历文件夹，收集图像路径及对应类名（父目录名作为类名）
-        for root, dirs, files in os.walk(self.image_root):
-            class_name = os.path.basename(root)  # 获取父目录名作为类名
-            for file in files:
-                if file.endswith(".JPEG"):
-                    self.image_files.append(os.path.join(root, file))
-                    self.image_classes.append(class_name)
+        image_files, image_classes = [], []
+        for root, dirs, files in os.walk(val_root):
+            class_name = os.path.basename(root)   # synset folder name = class label
+            for fname in files:
+                if fname.endswith(".JPEG"):
+                    image_files.append(os.path.join(root, fname))
+                    image_classes.append(class_name)
 
-        # 按文件名排序，确保与类名一致
-        sorted_indices = sorted(range(len(self.image_files)), key=lambda i: self.image_files[i])
-        self.image_files = [self.image_files[i] for i in sorted_indices]
-        self.image_classes = [self.image_classes[i] for i in sorted_indices]
+        # Sort by file path for reproducibility
+        sorted_idx    = sorted(range(len(image_files)), key=lambda i: image_files[i])
+        image_files   = [image_files[i]   for i in sorted_idx]
+        image_classes = [image_classes[i] for i in sorted_idx]
 
-        # 提取所有唯一的类名，并分配顺序索引
-        self.all_names = sorted(set(self.image_classes))  # 排序后去重
-        self.class_to_idx = {name: idx for idx, name in enumerate(self.all_names)}  # 类名到索引映射
+        # Build class → index mapping
+        self.all_names    = sorted(set(image_classes))
+        class_to_idx      = {name: idx for idx, name in enumerate(self.all_names)}
 
-        # 为每张图像分配标签
-        self.train_labels = [self.class_to_idx[class_name] for class_name in self.image_classes]
+        labels = [class_to_idx[c] for c in image_classes]
 
-        # 将验证集作为训练集和测试集
-        self.train_files = self.image_files  # 图像路径
-        self.train_prompts = self.image_classes  # 类名作为 prompt
-        self.train_labels = torch.tensor(self.train_labels).long()
-
-        self.test_files = self.train_files
-        self.test_prompts = self.train_prompts
-        self.test_labels = self.train_labels
+        # Use validation set as both train and test (zero-shot evaluation only)
+        self.train_files  = image_files
+        self.test_files   = image_files
+        self.train_labels = torch.tensor(labels).long()
+        self.test_labels  = self.train_labels
 
 
-class EUROSATDataset():
+# ===========================================================================
+# EuroSAT
+# ===========================================================================
+
+class EUROSATDataset:
     def __init__(self, args):
         """
-        - args: 需要包含以下参数
-            image_root -> 数据集的根路径
+        Load the EuroSAT dataset.
+        Expected directory: <image_root>/EUROSAT/
+        Files needed:
+          - split_EuroSAT.json  (train/test splits with [rel_path, label, class_name] triples)
+          - 2750/               (image files)
         """
-        # 加载数据集划分
-        with open(args.image_root + "/EUROSAT/split_EuroSAT.json", 'r') as file:
-            split = json.load(file)
-        
-        # 获取训练集和测试集图像文件及标签
+        base = os.path.join(args.image_root, "EUROSAT")
+
+        with open(os.path.join(base, "split_EuroSAT.json"), 'r') as f:
+            split = json.load(f)
+
+        img_root = os.path.join(base, "2750")
+
         train_df = split["train"]
-        test_df = split["test"]
+        test_df  = split["test"]
 
-        self.train_files = [train_data[0] for train_data in train_df]
-        self.train_labels = [train_data[1] for train_data in train_df]
+        self.train_files  = np.array([os.path.join(img_root, d[0]) for d in train_df])
+        self.train_labels = torch.from_numpy(np.array([d[1] for d in train_df])).long()
 
-        self.test_files = [test_data[0] for test_data in test_df]
-        self.test_labels = [test_data[1] for test_data in test_df]
+        self.test_files   = np.array([os.path.join(img_root, d[0]) for d in test_df])
+        self.test_labels  = torch.from_numpy(np.array([d[1] for d in test_df])).long()
 
-        def convert_path(image_files, img_dir):
-            new_image_files = []
-            for image_file in image_files:
-                image_file = os.path.join(img_dir, image_file)
-                new_image_files.append(image_file)
-            return np.array(new_image_files)
-        self.train_files = convert_path(self.train_files, args.image_root + f"/EUROSAT/2750")
-        self.test_files = convert_path(self.test_files, args.image_root + f"/EUROSAT/2750")
-        # print(f"Number of test images in PET dataset: {len(self.test_files)}")
-        # get label
-        self.train_labels = torch.from_numpy(np.array(self.train_labels)).long()
-        self.test_labels = torch.from_numpy(np.array(self.test_labels)).long()
+        # Derive class names from sorted unique set in training split
+        self.all_names = change_form(sorted(set([d[2] for d in train_df])))
 
-        # get class_names
-        allclasses_name = sorted(set([train_data[2] for train_data in train_df]))
-        self.all_names = change_form(allclasses_name)
 
+# ===========================================================================
+# Generic Dataset Wrapper (for DataLoader compatibility)
+# ===========================================================================
 
 class getDataset(Dataset):
+    """A simple wrapper that applies a transform and returns (image, label) pairs."""
     def __init__(self, image_files, labels, transform=None):
         self.image_files = image_files
-        self.labels = labels
-        self.transform = transform
+        self.labels      = labels
+        self.transform   = transform
 
     def __getitem__(self, idx):
-        img_pil = Image.open(self.image_files[idx]).convert("RGB")
+        img = Image.open(self.image_files[idx]).convert("RGB")
         if self.transform is not None:
-            img = self.transform(img_pil)
-        label = self.labels[idx]
-        return img, label
+            img = self.transform(img)
+        return img, self.labels[idx]
 
     def __len__(self):
         return len(self.image_files)
 
 
-def change_form(names):
-    new_names = []
-    for name in names:
-        parts = name.split('_')
-        name = ' '.join(parts)
-        new_names.append(name)
-    return new_names
+# ===========================================================================
+# Utility
+# ===========================================================================
 
+def change_form(names: list) -> list:
+    """
+    Normalize class names: replace underscores with spaces.
+    E.g., "Black_footed_Albatross" → "Black footed Albatross"
+    """
+    return [' '.join(name.split('_')) for name in names]

@@ -1,5 +1,25 @@
+# Datasets (large binary files, not tracked by git)
 dataset/
+
+# Python cache
 __pycache__/
-*.txt
+*.pyc
+*.pyo
+
+# Compressed feature files
 *.gz
+*.hdf5
+
+# Log files (metalog.txt is the experiment log, gitignore by default)
+metalog.txt
+*.log
+
+# Windows scripts
 *.bat
+
+# CLIP model cache (downloaded automatically)
+~/.cache/clip/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
